@@ -1,13 +1,13 @@
-﻿FROM python:3.9-slim
+FROM python:3.9-slim
 
 WORKDIR /app
 
-COPY requirements.txt .
+# Copy requirements first (to cache dependencies)
+COPY requirements.txt .  # Ensure this file exists in the root
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY src/app.py .
+# Copy the rest of the application
+COPY . .  # Copies all files (adjust if needed)
 
 EXPOSE 8501
-
-CMD [\
-streamlit\, \run\, \app.py\, \--server.port=8501\, \--server.address=0.0.0.0\]
+CMD ["streamlit", "run", "app.py"]  # Ensure app.py is in the root or adjust path
