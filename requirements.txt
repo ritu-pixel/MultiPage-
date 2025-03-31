@@ -7,3 +7,4 @@ sqlalchemy==1.4.32
 streamlit==1.11.0
 shap==0.41.0
 plotly==5.10.0
+altair
