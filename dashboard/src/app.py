@@ -289,7 +289,7 @@ elif pages[selected_page] == "explain":
         st.warning("Please train a model first")
         st.stop()
     
-    if st.button("Generate SHAP Values (Guaranteed Workaround)"):
+    if st.button("Generate SHAP Values"):
         with st.spinner("Calculating SHAP values..."):
             try:
                 # ======================================
