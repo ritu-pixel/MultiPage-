@@ -296,33 +296,36 @@ elif pages[selected_page] == "explain":
                 if hasattr(X_test, "toarray"):
                     X_test = X_test.toarray()
                 X_sample = np.array(X_test[:100])  # Use first 100 samples
+                feature_names = getattr(st.session_state, 'feature_names', 
+                                      [f"Feature {i}" for i in range(X_sample.shape[1])])
                 
                 # 2. SHAP Calculation
                 explainer = shap.Explainer(st.session_state.model)
                 shap_values = explainer(X_sample)
+                st.write("Raw SHAP values shape:", shap_values.shape)
                 
-                # 3. Shape Handling (Critical Fix)
-                if len(shap_values.shape) == 3:  # (n_classes, n_samples, n_features)
-                    st.write("Raw SHAP values shape:", shap_values.shape)
-                    
+                # 3. Handle Multi-Output Case (NEW FIX)
+                if len(shap_values.shape) == 3 and shap_values.shape[2] > 1:
+                    output_idx = st.selectbox(
+                        "Select output to explain",
+                        options=list(range(shap_values.shape[2])),
+                        format_func=lambda x: f"Output {x+1}"
+                    )
+                    shap_values = shap_values[:, :, output_idx]  # Shape now (100, 20)
+                    expected_value = explainer.expected_value[output_idx]
+                elif len(shap_values.shape) == 3 and shap_values.shape[0] == 2:
                     # Binary classification case
-                    if shap_values.shape[0] == 2:
-                        output_idx = st.selectbox(
-                            "Select class to explain",
-                            options=[0, 1],
-                            index=1,
-                            format_func=lambda x: ["Negative", "Positive"][x]
-                        )
-                        shap_values = shap_values[output_idx]  # Now (100, 10)
-                        expected_value = explainer.expected_value[output_idx]
-                    else:
-                        # Multi-class case
-                        output_idx = st.selectbox(
-                            "Select class to explain",
-                            options=list(range(shap_values.shape[0]))
-                        )
-                        shap_values = shap_values[output_idx]
-                        expected_value = explainer.expected_value[output_idx]
+                    output_idx = st.selectbox(
+                        "Select class to explain",
+                        options=[0, 1],
+                        index=1,
+                        format_func=lambda x: ["Negative", "Positive"][x]
+                    )
+                    shap_values = shap_values[output_idx]  # Shape now (100, 20)
+                    expected_value = explainer.expected_value[output_idx]
+                else:
+                    # Single output case
+                    expected_value = explainer.expected_value[0] if isinstance(explainer.expected_value, (list, np.ndarray)) else explainer.expected_value
                 
                 # 4. Final Shape Validation
                 if shap_values.shape != X_sample.shape:
@@ -330,8 +333,8 @@ elif pages[selected_page] == "explain":
                         shap_values = shap_values.T
                     else:
                         raise ValueError(
-                            f"Shape mismatch: SHAP {shap_values.shape} vs Data {X_sample.shape}\n"
-                            "Try transposing SHAP values or checking your model output."
+                            f"Final shape mismatch: SHAP {shap_values.shape} vs Data {X_sample.shape}\n"
+                            "This suggests your model has complex output dimensions."
                         )
                 
                 # 5. Visualizations
@@ -359,8 +362,12 @@ elif pages[selected_page] == "explain":
             except Exception as e:
                 st.error("SHAP analysis failed. Try these fixes:")
                 st.markdown("""
-                1. **For binary classifiers**: Ensure you selected the correct class (try index 1)
-                2. **Check shapes**: SHAP values should be (n_samples, n_features) after processing
-                3. **Reduce samples**: Try with fewer than 100 samples
+                1. **For multi-output models**: Select different output indices
+                2. **Check model type**: 
+                   - Regression needs `shap.Explainer`
+                   - Binary classification needs class selection (try index 1)
+                3. **Reduce dimensions**: Try with first 20 samples
                 """)
                 st.write(f"Technical details: {str(e)}")
+
+
