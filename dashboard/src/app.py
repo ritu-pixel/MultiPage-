@@ -284,168 +284,83 @@ elif pages[selected_page] == "drift":
 elif pages[selected_page] == "explain":
     st.header("Explainable AI with SHAP")
     
-    # Check requirements
-    if st.session_state.model is None or 'preprocessor' not in st.session_state:
+    if st.session_state.model is None:
         st.warning("Please train a model first")
         st.stop()
-    
-    st.subheader("SHAP Explanations")
     
     if st.button("Generate SHAP Values"):
         with st.spinner("Calculating SHAP values..."):
             try:
-                # ======================
                 # 1. Data Preparation
-                # ======================
                 X_test = st.session_state.X_test
-                model = st.session_state.model
-                
-                # Convert to dense array if sparse
                 if hasattr(X_test, "toarray"):
                     X_test = X_test.toarray()
-                X_test = np.array(X_test).astype(np.float64)
-                X_test = np.nan_to_num(X_test)
+                X_sample = np.array(X_test[:100])  # Use first 100 samples
                 
-                # Sample the data (smaller sample for Render's free tier)
-                sample_size = min(50, X_test.shape[0])
-                X_sample = X_test[:sample_size]
-                feature_names = getattr(st.session_state, 'feature_names', 
-                                      [f"Feature {i}" for i in range(X_sample.shape[1])])
-                
-                # ======================
                 # 2. SHAP Calculation
-                # ======================
-                # Determine model type
-                model_type = ('classifier' if hasattr(model, 'predict_proba') 
-                            else 'regressor')
-                
-                # Initialize appropriate explainer
-                if model_type == 'classifier' and hasattr(model, 'tree_'):
-                    explainer = shap.TreeExplainer(model)
-                else:
-                    explainer = shap.Explainer(model, X_sample, algorithm='auto')
-                
-                # Calculate SHAP values
+                explainer = shap.Explainer(st.session_state.model)
                 shap_values = explainer(X_sample)
                 
-                # ======================
-                # 3. Shape Handling
-                # ======================
-                if isinstance(shap_values, list):
-                    shap_values = np.array(shap_values)
+                # 3. Shape Handling (Critical Fix)
+                if len(shap_values.shape) == 3:  # (n_classes, n_samples, n_features)
+                    st.write("Raw SHAP values shape:", shap_values.shape)
+                    
+                    # Binary classification case
+                    if shap_values.shape[0] == 2:
+                        output_idx = st.selectbox(
+                            "Select class to explain",
+                            options=[0, 1],
+                            index=1,
+                            format_func=lambda x: ["Negative", "Positive"][x]
+                        )
+                        shap_values = shap_values[output_idx]  # Now (100, 10)
+                        expected_value = explainer.expected_value[output_idx]
+                    else:
+                        # Multi-class case
+                        output_idx = st.selectbox(
+                            "Select class to explain",
+                            options=list(range(shap_values.shape[0]))
+                        )
+                        shap_values = shap_values[output_idx]
+                        expected_value = explainer.expected_value[output_idx]
                 
-                st.write("Raw SHAP values shape:", shap_values.shape)
-                
-                # Handle different output types
-                if len(shap_values.shape) == 3:
-                    # Classification (n_classes, n_samples, n_features)
-                    class_names = (["Negative", "Positive"] if shap_values.shape[0] == 2 
-                                 else [f"Class {i}" for i in range(shap_values.shape[0])])
-                    output_idx = st.selectbox(
-                        "Select class to explain",
-                        options=list(range(shap_values.shape[0])),
-                        index=1 if shap_values.shape[0] > 1 else 0,
-                        format_func=lambda x: class_names[x]
-                    )
-                    shap_values = shap_values[output_idx]
-                    expected_value = explainer.expected_value[output_idx]
-                else:
-                    # Regression (n_samples, n_features)
-                    expected_value = (explainer.expected_value[0] 
-                                    if isinstance(explainer.expected_value, (list, np.ndarray)) 
-                                    else explainer.expected_value)
-                
-                # Final shape validation
+                # 4. Final Shape Validation
                 if shap_values.shape != X_sample.shape:
                     if shap_values.shape == X_sample.shape[::-1]:
                         shap_values = shap_values.T
                     else:
                         raise ValueError(
                             f"Shape mismatch: SHAP {shap_values.shape} vs Data {X_sample.shape}\n"
-                            f"Try using a different explainer or checking your model output."
+                            "Try transposing SHAP values or checking your model output."
                         )
                 
-                # ======================
-                # 4. Visualizations
-                # ======================
-                tab1, tab2, tab3 = st.tabs(["Global Importance", "Individual Explanation", "Debug Info"])
+                # 5. Visualizations
+                st.subheader("Global Feature Importance")
+                fig, ax = plt.subplots(figsize=(10, 6))
+                shap.summary_plot(
+                    shap_values,
+                    X_sample,
+                    feature_names=feature_names,
+                    plot_type="bar",
+                    show=False
+                )
+                st.pyplot(fig)
                 
-                with tab1:
-                    st.subheader("Global Feature Importance")
-                    fig, ax = plt.subplots(figsize=(10, 6))
-                    shap.summary_plot(
-                        shap_values,
-                        X_sample,
-                        feature_names=feature_names,
-                        plot_type="dot",
-                        show=False
-                    )
-                    st.pyplot(fig, bbox_inches='tight')
-                    plt.close()
+                st.subheader("Individual Explanation")
+                sample_idx = st.slider("Select sample", 0, X_sample.shape[0]-1, 0)
+                st.pyplot(shap.force_plot(
+                    expected_value,
+                    shap_values[sample_idx],
+                    X_sample[sample_idx],
+                    feature_names=feature_names,
+                    matplotlib=True
+                ))
                 
-                with tab2:
-                    st.subheader("Individual Prediction Analysis")
-                    sample_idx = st.select_slider(
-                        "Select sample to explain",
-                        options=list(range(sample_size)),
-                        value=0
-                    )
-                    
-                    # Force plot
-                    st.markdown("#### Force Plot")
-                    fig = shap.force_plot(
-                        expected_value,
-                        shap_values[sample_idx],
-                        X_sample[sample_idx],
-                        feature_names=feature_names,
-                        matplotlib=True
-                    )
-                    st.pyplot(fig, bbox_inches='tight')
-                    
-                    # Decision plot
-                    st.markdown("#### Decision Plot")
-                    fig, ax = plt.subplots(figsize=(10, 6))
-                    shap.decision_plot(
-                        expected_value,
-                        shap_values[sample_idx],
-                        feature_names=feature_names,
-                        show=False
-                    )
-                    st.pyplot(fig, bbox_inches='tight')
-                    plt.close()
-                
-                with tab3:
-                    st.subheader("Debug Information")
-                    st.json({
-                        "data_shape": str(X_sample.shape),
-                        "shap_values_shape": str(shap_values.shape),
-                        "expected_value": str(expected_value),
-                        "model_type": model_type,
-                        "explainer_type": str(type(explainer))
-                    })
-                    if st.checkbox("Show raw values"):
-                        st.write("Sample data:", X_sample[sample_idx])
-                        st.write("SHAP values:", shap_values[sample_idx])
-            
             except Exception as e:
-                st.error("SHAP analysis failed. Common fixes:")
+                st.error("SHAP analysis failed. Try these fixes:")
                 st.markdown("""
-                1. **Reduce sample size** (try 20-30 samples)
-                2. **Check model type**:
-                   - Tree models need `TreeExplainer`
-                   - Linear models work with `LinearExplainer`
-                3. **Verify feature names** match data dimensions
+                1. **For binary classifiers**: Ensure you selected the correct class (try index 1)
+                2. **Check shapes**: SHAP values should be (n_samples, n_features) after processing
+                3. **Reduce samples**: Try with fewer than 100 samples
                 """)
-                
-                if isinstance(e, ValueError) and "Shape mismatch" in str(e):
-                    st.warning("Try adding this before SHAP calculation:")
-                    st.code("""
-                    if hasattr(model, 'predict_proba'):
-                        explainer = shap.TreeExplainer(model)
-                    else:
-                        explainer = shap.Explainer(model, X_sample)
-                    """)
-                
-                if st.checkbox("Show technical details"):
-                    st.exception(e)
-           
+                st.write(f"Technical details: {str(e)}")
