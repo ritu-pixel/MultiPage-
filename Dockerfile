@@ -2,20 +2,20 @@ FROM python:3.9-slim
 
 WORKDIR /app
 
-# Install system dependencies
+# 1. Install system dependencies
 RUN apt-get update && apt-get install -y \
     libgomp1 \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements first (for caching)
+# 2. Copy ONLY requirements first (better caching)
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy entire project structure
-COPY . .
+# 3. Copy the rest (excluding unnecessary files)
+COPY dashboard ./dashboard
 
-# Set Python path to include dashboard/src
-ENV PYTHONPATH="${PYTHONPATH}:/app/dashboard/src"
+# 4. Set Python path (critical for imports)
+ENV PYTHONPATH="/app:${PYTHONPATH}"
 
 EXPOSE 8501
 CMD ["streamlit", "run", "dashboard/src/app.py"]
