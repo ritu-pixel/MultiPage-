@@ -9,3 +9,4 @@ shap==0.41.0
 plotly==5.10.0
 altair==4.2.2  # Critical - last version with vegalite.v4 API
 protobuf==3.20.3  # Required for Streamlit 1.11 compatibility
+evidently==0.4.8
