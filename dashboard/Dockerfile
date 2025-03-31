@@ -2,12 +2,13 @@ FROM python:3.9-slim
 
 WORKDIR /app
 
-# Copy requirements first (for dependency caching)
+# Install dependencies
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy the application files
-COPY dashboard/src/ ./src/
+# Copy the entire project (adjust if needed)
+COPY . .
 
+# Run Streamlit
 EXPOSE 8501
-CMD ["streamlit", "run", "src/app.py"]
+CMD ["streamlit", "run", "dashboard/src/app.py"]
